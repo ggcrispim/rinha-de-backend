@@ -1,0 +1,86 @@
+services:
+  rinha-redis:
+    container_name: rinha-redis
+    command: redis-server --save "" --appendonly no --maxclients 20000
+    hostname: rinha-redis
+    image: redis
+    ports:
+      - "6379:6379"
+    networks:
+      - backend
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    deploy:
+        resources:
+          limits:
+            cpus: "0.25"
+            memory: "75MB"
+
+  rinha-db:
+    image: postgres:latest
+    container_name: rinha-db
+    hostname: rinha-db
+    environment:
+    - POSTGRES_USER=postgres
+    - POSTGRES_PASSWORD=postgres
+    - POSTGRES_DB=rinha
+    networks:
+      - backend
+    ports:
+    - "5432:5432"
+    command: postgres -c max_connections=450 -c shared_buffers=32MB -c effective_cache_size=96MB -c work_mem=3MB -c maintenance_work_mem=12MB -c synchronous_commit=off -c fsync=off
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d rinha" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+        resources:
+          limits:
+            cpus: "0.25"
+            memory: "75MB"
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - db_data:/var/lib/postgresql/data
+
+#  api-1:
+#    container_name: rinha-api-1
+#    image: crispimgabriel/rinha-backend:latest
+#    hostname: api-1
+#    ports:
+#      - "9090:8080"
+#    environment:
+#      - QUARKUS_DATASOURCE_USERNAME=postgres
+#      - QUARKUS_DATASOURCE_PASSWORD=postgres
+#      - QUARKUS_DATASOURCE_JDBC_URL=jdbc:postgresql://rinha-db:5432/rinha
+#      - APP_PORT=8080
+#      - REDIS_URL=redis://rinha-redis:6379
+#      - PAYMENT_PROCESSOR_DEFAULT=http://payment-processor-default:8080
+#      - PAYMENT_PROCESSOR_FALLBACK=http://payment-processor-fallback:8080
+#    depends_on:
+#      rinha-db:
+#        condition: service_healthy
+#      rinha-redis:
+#        condition: service_healthy
+#    networks:
+#      - backend
+#      - payment-processor
+#    deploy:
+#      resources:
+#        limits:
+#          cpus: "1.0"
+#          memory: "200MB"
+
+volumes:
+  db_data:
+    driver: local
+
+networks:
+    backend:
+        driver: bridge
+    payment-processor:
+        external: true
