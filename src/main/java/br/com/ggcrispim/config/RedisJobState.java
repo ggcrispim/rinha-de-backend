@@ -1,6 +1,5 @@
 package br.com.ggcrispim.config;
 
-import java.math.BigDecimal;
 
 public enum RedisJobState {
     PAYMENT_REQUESTED("payment_requested"),
@@ -16,7 +15,4 @@ public enum RedisJobState {
    public String getState() {
         return this.state;
    }
-
-
-
 }

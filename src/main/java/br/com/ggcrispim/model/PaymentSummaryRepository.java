@@ -1,7 +1,9 @@
 package br.com.ggcrispim.model;
 
 
-import io.quarkus.hibernate.orm.panache.PanacheRepository;
+
+import io.quarkus.hibernate.reactive.panache.PanacheRepository;
+import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 
 import java.time.LocalDateTime;
@@ -10,7 +12,7 @@ import java.util.List;
 @ApplicationScoped
 public class PaymentSummaryRepository implements PanacheRepository<PaymentSummaryModel> {
 
-    public List<PaymentSummaryModel> findByDateRange(LocalDateTime startDate, LocalDateTime endDate) {
+    public Uni<List<PaymentSummaryModel>> findByDateRange(LocalDateTime startDate, LocalDateTime endDate) {
         if (startDate == null && endDate == null) {
             return listAll();
         }

@@ -5,15 +5,14 @@ import br.com.ggcrispim.dto.Summary;
 import br.com.ggcrispim.model.PaymentStrategy;
 import br.com.ggcrispim.model.PaymentSummaryModel;
 import br.com.ggcrispim.model.PaymentSummaryRepository;
+import io.quarkus.hibernate.reactive.panache.common.WithSession;
+import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 
 @ApplicationScoped
 public class PaymentSummaryService {
@@ -25,29 +24,31 @@ public class PaymentSummaryService {
         this.paymentSummaryRepository = paymentSummaryRepository;
     }
 
-    public PaymentSummary getPaymentSummary(String startDate, String endDate) {
-        // Fetch the payment summaries from the repository based on the date range
-        var paymentSummaries = paymentSummaryRepository.findByDateRange(parseDate(startDate), parseDate(endDate));
+    @WithSession
+    public Uni<PaymentSummary> getPaymentSummary(String startDate, String endDate) {
+        return paymentSummaryRepository.findByDateRange(parseDate(startDate), parseDate(endDate))
+                .onItem().transform(paymentSummaries -> {
+                    // Use more efficient grouping
+                    double totalDefault = 0;
+                    double totalFallback = 0;
+                    int countDefault = 0;
+                    int countFallback = 0;
 
-        // Split the payment summaries into two lists based on the payment strategy
-        Map<PaymentStrategy, List<PaymentSummaryModel>> paymentsByStrategy = paymentSummaries.parallelStream()
-                .collect(Collectors.groupingBy(PaymentSummaryModel::getPaymentStrategy));
+                    for (PaymentSummaryModel payment : paymentSummaries) {
+                        if (payment.getPaymentStrategy() == PaymentStrategy.DEFAULT) {
+                            totalDefault += payment.getAmount();
+                            countDefault++;
+                        } else if (payment.getPaymentStrategy() == PaymentStrategy.FALLBACK) {
+                            totalFallback += payment.getAmount();
+                            countFallback++;
+                        }
+                    }
 
-        // Compute DEFAULT payments
-        double totalDefault = paymentsByStrategy.getOrDefault(PaymentStrategy.DEFAULT, List.of()).parallelStream()
-                .mapToDouble(PaymentSummaryModel::getAmount)
-                .sum();
-        Summary defaultSummary = new Summary(paymentsByStrategy.getOrDefault(PaymentStrategy.DEFAULT, List.of()).size(), totalDefault);
+                    Summary defaultSummary = new Summary(countDefault, totalDefault);
+                    Summary fallbackSummary = new Summary(countFallback, totalFallback);
 
-        // Compute FALLBACK payments
-        double totalFallback = paymentsByStrategy.getOrDefault(PaymentStrategy.FALLBACK, List.of()).parallelStream()
-                .mapToDouble(PaymentSummaryModel::getAmount)
-                .sum();
-        Summary fallbackSummary = new Summary(paymentsByStrategy.getOrDefault(PaymentStrategy.FALLBACK, List.of()).size(), totalFallback);
-
-
-        // Convert the list of PaymentSummaryModel to PaymentSummary DTO
-        return new PaymentSummary(defaultSummary, fallbackSummary);
+                    return new PaymentSummary(defaultSummary, fallbackSummary);
+                });
     }
 
     private LocalDateTime parseDate(String date) {

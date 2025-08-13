@@ -12,6 +12,14 @@ import java.util.UUID;
 @Table(name = "payment_summary")
 public class PaymentSummaryModel {
 
+    public PaymentSummaryModel() {}
+
+    public PaymentSummaryModel(PaymentStrategy paymentStrategy, Double amount, UUID correlationId) {
+        this.paymentStrategy = paymentStrategy;
+        this.amount = amount;
+        this.correlationId = correlationId;
+    }
+
     @Id
     private UUID correlationId;
 

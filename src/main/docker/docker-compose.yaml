@@ -16,8 +16,8 @@ services:
     deploy:
         resources:
           limits:
-            cpus: "0.25"
-            memory: "75MB"
+            cpus: "0.15"
+            memory: "50MB"
 
   rinha-db:
     image: postgres:latest
@@ -41,39 +41,65 @@ services:
     deploy:
         resources:
           limits:
-            cpus: "0.25"
-            memory: "75MB"
+            cpus: "0.15"
+            memory: "50MB"
     volumes:
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
       - db_data:/var/lib/postgresql/data
 
-#  api-1:
-#    container_name: rinha-api-1
-#    image: crispimgabriel/rinha-backend:latest
-#    hostname: api-1
+  api-1: &api
+    image: crispimgabriel/rinha-backend:latest
+    hostname: api-1
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/q/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    ports:
+        - "9999:8080"
+    environment:
+      - QUARKUS_DATASOURCE_USERNAME=postgres
+      - QUARKUS_DATASOURCE_PASSWORD=postgres
+      - QUARKUS_DATASOURCE_REACTIVE_URL=postgresql://rinha-db:5432/rinha
+      - APP_PORT=8080
+      - REDIS_URL=redis://rinha-redis:6379
+      - PAYMENT_PROCESSOR_DEFAULT=http://payment-processor-default:8080
+      - PAYMENT_PROCESSOR_FALLBACK=http://payment-processor-fallback:8080
+    depends_on:
+      rinha-db:
+        condition: service_healthy
+      rinha-redis:
+        condition: service_healthy
+    networks:
+      - backend
+      - payment-processor
+    deploy:
+      resources:
+        limits:
+          cpus: "1.2"
+          memory: "250MB"
+#  api-2:
+#    <<: *api
+#    hostname: api-2
+#
+#  lb:
+#    image: nginx:1.27.0-alpine
+#    volumes:
+#      - ./nginx.conf:/etc/nginx/nginx.conf:ro
 #    ports:
-#      - "9090:8080"
-#    environment:
-#      - QUARKUS_DATASOURCE_USERNAME=postgres
-#      - QUARKUS_DATASOURCE_PASSWORD=postgres
-#      - QUARKUS_DATASOURCE_JDBC_URL=jdbc:postgresql://rinha-db:5432/rinha
-#      - APP_PORT=8080
-#      - REDIS_URL=redis://rinha-redis:6379
-#      - PAYMENT_PROCESSOR_DEFAULT=http://payment-processor-default:8080
-#      - PAYMENT_PROCESSOR_FALLBACK=http://payment-processor-fallback:8080
-#    depends_on:
-#      rinha-db:
-#        condition: service_healthy
-#      rinha-redis:
-#        condition: service_healthy
+#      - "9999:9999"
 #    networks:
-#      - backend
 #      - payment-processor
+#      - backend
+#    depends_on:
+#      - api-1
+#      - api-2
 #    deploy:
 #      resources:
 #        limits:
-#          cpus: "1.0"
-#          memory: "200MB"
+#          cpus: "0.15"
+#          memory: "50MB"
 
 volumes:
   db_data:
