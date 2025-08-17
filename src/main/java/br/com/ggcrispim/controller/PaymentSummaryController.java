@@ -1,6 +1,5 @@
 package br.com.ggcrispim.controller;
 
-
 import br.com.ggcrispim.service.PaymentSummaryService;
 import io.smallrye.mutiny.Uni;
 import jakarta.inject.Inject;

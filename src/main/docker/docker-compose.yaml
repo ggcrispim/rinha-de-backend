@@ -1,7 +1,7 @@
 services:
   rinha-redis:
     container_name: rinha-redis
-    command: redis-server --save "" --appendonly no --maxclients 20000
+    command: redis-server --save "" --appendonly no --maxclients 20000 --maxmemory 80mb --maxmemory-policy allkeys-lru --tcp-backlog 65535
     hostname: rinha-redis
     image: redis
     ports:
@@ -14,24 +14,41 @@ services:
       timeout: 5s
       retries: 5
     deploy:
-        resources:
-          limits:
-            cpus: "0.15"
-            memory: "50MB"
+      resources:
+        limits:
+          cpus: "0.1"
+          memory: "10MB"
 
   rinha-db:
     image: postgres:latest
     container_name: rinha-db
     hostname: rinha-db
     environment:
-    - POSTGRES_USER=postgres
-    - POSTGRES_PASSWORD=postgres
-    - POSTGRES_DB=rinha
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=rinha
     networks:
       - backend
     ports:
-    - "5432:5432"
-    command: postgres -c max_connections=450 -c shared_buffers=32MB -c effective_cache_size=96MB -c work_mem=3MB -c maintenance_work_mem=12MB -c synchronous_commit=off -c fsync=off
+      - "5432:5432"
+    command:
+      postgres
+      -c max_connections=50
+      -c shared_buffers=16MB
+      -c effective_cache_size=32MB
+      -c work_mem=1MB
+      -c maintenance_work_mem=4MB
+      -c synchronous_commit=off
+      -c fsync=off
+      -c wal_level=minimal
+      -c max_wal_senders=0
+      -c checkpoint_completion_target=0.9
+      -c wal_buffers=1MB
+      -c default_statistics_target=100
+      -c random_page_cost=1.1
+      -c effective_io_concurrency=200
+      -c min_wal_size=80MB
+      -c max_wal_size=1GB
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U postgres -d rinha" ]
       interval: 10s
@@ -39,25 +56,23 @@ services:
       retries: 5
       start_period: 10s
     deploy:
-        resources:
-          limits:
-            cpus: "0.15"
-            memory: "50MB"
+      resources:
+        limits:
+          cpus: "0.1"
+          memory: "50MB"
     volumes:
+      - postgres-01:/var/run/postgresql
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
-      - db_data:/var/lib/postgresql/data
 
   api-1: &api
     image: crispimgabriel/rinha-backend:latest
     hostname: api-1
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8080/q/health" ]
-      interval: 10s
+      interval: 15s
       timeout: 5s
       retries: 3
-      start_period: 30s
-    ports:
-        - "9999:8080"
+      start_period: 45s
     environment:
       - QUARKUS_DATASOURCE_USERNAME=postgres
       - QUARKUS_DATASOURCE_PASSWORD=postgres
@@ -66,6 +81,8 @@ services:
       - REDIS_URL=redis://rinha-redis:6379
       - PAYMENT_PROCESSOR_DEFAULT=http://payment-processor-default:8080
       - PAYMENT_PROCESSOR_FALLBACK=http://payment-processor-fallback:8080
+      - BATCH_SIZE=100
+      #- EVENT_LOOPS_POOL_SIZE=12
     depends_on:
       rinha-db:
         condition: service_healthy
@@ -77,36 +94,36 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "1.2"
-          memory: "250MB"
-#  api-2:
-#    <<: *api
-#    hostname: api-2
-#
-#  lb:
-#    image: nginx:1.27.0-alpine
-#    volumes:
-#      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-#    ports:
-#      - "9999:9999"
-#    networks:
-#      - payment-processor
-#      - backend
-#    depends_on:
-#      - api-1
-#      - api-2
-#    deploy:
-#      resources:
-#        limits:
-#          cpus: "0.15"
-#          memory: "50MB"
+          cpus: "0.6"
+          memory: "140MB"
+
+  api-2:
+    <<: *api
+    hostname: api-2
+
+  lb:
+    image: nginx:alpine
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "9999:9999"
+    networks:
+      - payment-processor
+      - backend
+    depends_on:
+      - api-1
+      - api-2
+    deploy:
+      resources:
+        limits:
+          cpus: "0.1"
+          memory: "10MB"
 
 volumes:
-  db_data:
-    driver: local
+  postgres-01:
 
 networks:
-    backend:
-        driver: bridge
-    payment-processor:
-        external: true
+  backend:
+    driver: bridge
+  payment-processor:
+    external: true

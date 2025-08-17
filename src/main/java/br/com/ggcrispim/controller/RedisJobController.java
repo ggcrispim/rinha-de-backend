@@ -25,7 +25,8 @@ public class RedisJobController {
 
     @POST
     public Uni<Void> enqueueJob(PaymentRequest paymentRequest) {
-        return queueService.enqueueJob(paymentRequest)
+        return
+                queueService.enqueueJob(paymentRequest)
                 .onItem().ignore().andContinueWithNull()
                 .onFailure().invoke(Unchecked.consumer(failure -> {
                     throw new RuntimeException("Failed to enqueue job: " + paymentRequest.getCorrelationId(), failure);
