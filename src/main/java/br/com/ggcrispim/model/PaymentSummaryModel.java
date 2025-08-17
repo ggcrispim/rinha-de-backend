@@ -93,10 +93,10 @@ public class PaymentSummaryModel {
                 });
     }
 
-    public static Uni<Void> insertIntoDatabase(Pool client, PaymentSummaryModel paymentSummaryModel) {
+    public static Uni<Void> insertIntoDatabase(Pool client, PaymentRequest PaymentRequest) {
         return client
                 .preparedQuery("INSERT INTO payment_summary (correlationid, amount, requested_at, payment_strategy) VALUES ($1, $2, $3, $4)")
-                .execute(Tuple.of(paymentSummaryModel.getCorrelationId(), paymentSummaryModel.getAmount(), paymentSummaryModel.getRequestedAt(), PaymentStrategy.DEFAULT))
+                .execute(Tuple.of(PaymentRequest.getCorrelationId(), PaymentRequest.getAmount(), PaymentRequest.getRequestedAt(), PaymentStrategy.DEFAULT))
                 .onFailure().invoke(failure -> {
                     // Log the error (optional)
                     System.err.println("Failed to insert payment summary: " + failure.getMessage());

@@ -1,7 +1,9 @@
 package br.com.ggcrispim.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import io.quarkus.runtime.annotations.RegisterForReflection;
 
+@RegisterForReflection
 public class PaymentSummary {
 
     @JsonProperty(value = "default")

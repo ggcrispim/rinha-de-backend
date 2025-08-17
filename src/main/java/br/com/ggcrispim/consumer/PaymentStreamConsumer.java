@@ -32,8 +32,8 @@ public class PaymentStreamConsumer {
     private static final String CONSUMER_GROUP = "payment-processors";
     @ConfigProperty(name = "payment.stream.batch-size", defaultValue = "30")
     private int BATCH_SIZE;
-    private static final int MAX_CONCURRENT_PROCESSING = 10;
-    private static final String[] CONSUMER_NAMES = {"processor-1", "processor-2", "processor-3", "processor-4"};
+    private static final String[] CONSUMER_NAMES = {"processor-1", "processor-2", "processor-3", "processor-4", "processor-5",
+                                                    "processor-6", "processor-7", "processor-8", "processor-9", "processor-10"};
 
     private final AtomicInteger activeProcessingCount = new AtomicInteger(0);
 
@@ -75,7 +75,7 @@ public class PaymentStreamConsumer {
     private Uni<Void> readFromStream(String consumerName) {
         XReadGroupArgs args = new XReadGroupArgs()
                 .count(BATCH_SIZE)
-                .block(Duration.ofMillis(100));
+                .block(Duration.ofMillis(10));
 
         return reactiveRedisClient.stream(String.class)
                 .xreadgroup(CONSUMER_GROUP, consumerName, PAYMENT_STREAM, ">", args)
@@ -129,21 +129,20 @@ public class PaymentStreamConsumer {
 
         // Apply backpressure with controlled concurrency - fully reactive
         return Multi.createFrom().iterable(validMessages)
-                .onItem().transformToUniAndConcatenate(this::processStreamMessageWithBackpressure)
+                .onItem().transformToUni(this::processStreamMessageWithBackpressure)
+                .merge(25)
                 .collect().asList()
-                .onItem().transformToUni(this::acknowledgeMessages)
+                .onItem().transformToUni(successfulMessageIds -> {
+                    LOG.info("Successfully processed " + successfulMessageIds.size() + " out of " + validMessages.size() + " messages");
+                    return acknowledgeMessages(successfulMessageIds);
+                })
                 .onItem().invoke(count ->
-                        LOG.info("Successfully processed and acknowledged " + count + " messages"))
+                        LOG.info("Successfully acknowledged " + count + " messages"))
                 .replaceWithVoid();
     }
 
     private Uni<String> processStreamMessageWithBackpressure(StreamMessage<String, String, String> message) {
-        int currentCount = activeProcessingCount.get();
-        if (currentCount >= MAX_CONCURRENT_PROCESSING) {
-            LOG.warn("Processing capacity exceeded, skipping message: " + message.id());
-            return Uni.createFrom().item(message.id());
-        }
-
+        // Remove the skipping logic - process all messages
         activeProcessingCount.incrementAndGet();
         return processStreamMessageReactively(message)
                 .onTermination().invoke(() -> activeProcessingCount.decrementAndGet());
@@ -156,8 +155,8 @@ public class PaymentStreamConsumer {
                 .onItem().transformToUni(paymentRequest ->
                         processPaymentAndPersist(paymentRequest, message.id()))
                 .onFailure().invoke(failure ->
-                        LOG.error("Failed to process stream message: " + message.id(), failure))
-                .onFailure().recoverWithItem(message.id());
+                        LOG.error("Failed to process stream message: " + message.id(), failure));
+
     }
 
     private Uni<String> extractPayloadFromMessage(StreamMessage<String, String, String> message) {
@@ -182,7 +181,7 @@ public class PaymentStreamConsumer {
         }
     }
 
-    private Uni<String> processPaymentAndPersist(PaymentRequest paymentRequest, String messageId) {
+    public Uni<String> processPaymentAndPersist(PaymentRequest paymentRequest, String messageId) {
         return redisQueueService.processPaymentWithHealthCheck(paymentRequest)
                 .onItem().transformToUni(processedPayment -> persistPaymentSummary(paymentRequest))
                 .onItem().invoke(saved ->
@@ -192,14 +191,23 @@ public class PaymentStreamConsumer {
                 .onFailure().recoverWithItem(messageId);
     }
 
-    private Uni<PaymentSummaryModel> persistPaymentSummary(PaymentRequest paymentRequest) {
-        var paymentSummary = paymentSummaryModelMapper.map(paymentRequest);
-        return PaymentSummaryModel.insertIntoDatabase(client, paymentSummary)
+    public Uni<String> processPaymentAndPersist(PaymentRequest paymentRequest) {
+        return redisQueueService.processPaymentWithHealthCheck(paymentRequest)
+                .onItem().transformToUni(processedPayment -> persistPaymentSummary(paymentRequest))
+                .onItem().invoke(saved ->
+                        LOG.debug("Processed and persisted payment from stream: " + paymentRequest.getCorrelationId()))
+                .onItem().transform(ignored -> paymentRequest.getCorrelationId())
+                .onFailure().invoke(failure -> handleProcessingFailure(failure, paymentRequest))
+                .onFailure().recoverWithItem(paymentRequest.getCorrelationId());
+    }
+
+    private Uni<PaymentRequest> persistPaymentSummary(PaymentRequest paymentRequest) {
+        return PaymentSummaryModel.insertIntoDatabase(client, paymentRequest)
                 .onItem().invoke(() ->
-                        LOG.debug("Payment summary persisted: " + paymentSummary.getCorrelationId()))
+                        LOG.debug("Payment summary persisted: " + paymentRequest.getCorrelationId()))
                 .onFailure().invoke(failure ->
-                        LOG.error("Failed to persist payment summary: " + paymentSummary.getCorrelationId(), failure))
-                .replaceWith(paymentSummary);
+                        LOG.error("Failed to persist payment summary: " + paymentRequest.getCorrelationId(), failure))
+                .replaceWith(paymentRequest);
     }
 
     private void handleProcessingFailure(Throwable failure, PaymentRequest paymentRequest) {

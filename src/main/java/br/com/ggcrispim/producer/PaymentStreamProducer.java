@@ -8,11 +8,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.atomic.AtomicInteger;
 
 @ApplicationScoped
 public class PaymentStreamProducer {
@@ -22,9 +18,6 @@ public class PaymentStreamProducer {
 
     @Inject
     ReactiveRedisDataSource reactiveRedisClient;
-
-    private final ConcurrentLinkedQueue<PaymentRequest> paymentBuffer = new ConcurrentLinkedQueue<>();
-    private final AtomicInteger bufferCount = new AtomicInteger(0);
 
     public Uni<Void> addPaymentToStream(PaymentRequest paymentRequest) {
         return addSinglePaymentToStream(paymentRequest)

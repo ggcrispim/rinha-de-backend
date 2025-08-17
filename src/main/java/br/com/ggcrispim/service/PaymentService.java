@@ -25,7 +25,7 @@ public class PaymentService {
 
     private static final Logger LOG = Logger.getLogger(PaymentService.class);
 
-    @Retry(maxRetries = -1, delay = 5, delayUnit = ChronoUnit.SECONDS, jitter = 50)
+    @Retry(maxRetries = 10, delay = 5, delayUnit = ChronoUnit.SECONDS, jitter = 50)
     //@Fallback(fallbackMethod = "processWithFallback")
     @Timeout(value = 5, unit = ChronoUnit.SECONDS)
     public Uni<Response> processPayment(PaymentRequest paymentRequest) {
